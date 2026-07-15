@@ -1,0 +1,24 @@
+groups:
+  - name: rentcars-data-platform
+    rules:
+      - alert: PipelineFailureRateHigh
+        expr: sum(pipeline_runs_total{status=~"failed|timeout"}) / sum(pipeline_runs_total) > 0.15
+        for: 10m
+        labels: {severity: critical}
+        annotations: {summary: "Pipeline failure rate is above 15%"}
+      - alert: PipelineDurationHigh
+        expr: pipeline_duration_seconds > 7200
+        for: 5m
+        labels: {severity: critical}
+        annotations: {summary: "Pipeline execution exceeded two hours"}
+      - alert: StreamingLagHigh
+        expr: streaming_lag_seconds > 300
+        for: 10m
+        labels: {severity: warning}
+        annotations: {summary: "Payment stream lag is above five minutes"}
+      - alert: SmallFilesPerPartitionHigh
+        expr: lake_partition_file_count > 20 or (lake_partition_average_file_bytes < 134217728 and lake_partition_file_count > 1)
+        for: 15m
+        labels: {severity: warning}
+        annotations: {summary: "Partition contains too many small files"}
+

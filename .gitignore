@@ -1,0 +1,17 @@
+.venv/
+.deps/
+.localpip/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.db
+data/lake/
+data/state/
+data/quarantine/
+data/demo_small_files/
+airflow/logs/
+.env
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars

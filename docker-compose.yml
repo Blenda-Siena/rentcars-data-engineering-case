@@ -1,0 +1,105 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: rentcars
+      POSTGRES_USER: rentcars
+      POSTGRES_PASSWORD: rentcars-local
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rentcars -d rentcars"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  pipeline:
+    build: {context: ., dockerfile: infra/Dockerfile}
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    environment:
+      DATABASE_URL: postgresql://rentcars:rentcars-local@postgres:5432/rentcars
+    volumes: ["./:/app"]
+    command: ["python", "-m", "pipeline.run", "--input", "data/raw", "--output", "data/lake", "--checkpoint", "data/state/checkpoints.json"]
+    depends_on:
+      postgres: {condition: service_healthy}
+
+  api:
+    build: {context: ., dockerfile: infra/Dockerfile}
+    environment:
+      API_KEY: local-dev-key
+      DATABASE_URL: postgresql://rentcars:rentcars-local@postgres:5432/rentcars
+    ports: ["8000:8000"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      pipeline: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/v1/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  airflow:
+    build: {context: ., dockerfile: infra/Dockerfile.airflow}
+    user: "${AIRFLOW_UID:-1000}:0"
+    working_dir: /opt/airflow/project
+    environment:
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://rentcars:rentcars-local@postgres:5432/rentcars
+      DATABASE_URL: postgresql://rentcars:rentcars-local@postgres:5432/rentcars
+      PYTHONPATH: /opt/airflow/project
+    volumes:
+      - "./pipeline/dags:/opt/airflow/dags"
+      - "./:/opt/airflow/project"
+      - "airflow_logs:/opt/airflow/logs"
+    ports: ["8080:8080"]
+    command: standalone
+    depends_on:
+      postgres: {condition: service_healthy}
+    restart: unless-stopped
+
+  pipeline-exporter:
+    build: {context: ., dockerfile: infra/Dockerfile}
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    working_dir: /app
+    volumes: ["./:/app:ro"]
+    command: ["python", "observability/exporter.py"]
+    ports: ["9101:9101"]
+    depends_on:
+      pipeline: {condition: service_completed_successfully}
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.4.1
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus"]
+    volumes:
+      - "./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro"
+      - "./observability/alerts.yml:/etc/prometheus/alerts.yml:ro"
+      - "prometheus_data:/prometheus"
+    ports: ["9090:9090"]
+    depends_on: [api, pipeline-exporter]
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:12.0.2
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - "./observability/grafana/provisioning:/etc/grafana/provisioning:ro"
+      - "./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro"
+      - "grafana_data:/var/lib/grafana"
+    ports: ["3000:3000"]
+    depends_on: [prometheus]
+    restart: unless-stopped
+
+volumes:
+  airflow_logs:
+  postgres_data:
+  prometheus_data:
+  grafana_data:

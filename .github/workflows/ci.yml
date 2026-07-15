@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m compileall -q api pipeline observability tests
+      - run: pytest -q
+
+  docker-smoke:
+    runs-on: ubuntu-latest
+    needs: tests
+    steps:
+      - uses: actions/checkout@v4
+      - name: Match container user to runner
+        run: |
+          echo "LOCAL_UID=$(id -u)" >> "$GITHUB_ENV"
+          echo "LOCAL_GID=$(id -g)" >> "$GITHUB_ENV"
+      - run: docker compose config --quiet
+      - run: docker compose build api pipeline pipeline-exporter
+      - run: docker compose up -d postgres
+      - run: docker compose run --rm pipeline
+      - run: docker compose up -d --no-deps api
+      - name: Wait for API
+        run: |
+          for attempt in {1..30}; do
+            curl --fail http://localhost:8000/v1/health && exit 0
+            sleep 2
+          done
+          docker compose logs api postgres pipeline
+          exit 1
+      - run: |
+          curl --fail -H 'X-API-Key: local-dev-key' http://localhost:8000/v1/partners/PRT0001
+      - if: always()
+        run: docker compose down -v
+
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+      - run: terraform fmt -check -recursive
+      - working-directory: infra/terraform
+        run: terraform init -backend=false
+      - working-directory: infra/terraform
+        run: terraform validate

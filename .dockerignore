@@ -1,0 +1,12 @@
+.git
+.github
+.venv
+.deps
+.localpip
+.pytest_cache
+__pycache__
+data/lake
+data/quarantine
+data/state
+data/serving.db
+

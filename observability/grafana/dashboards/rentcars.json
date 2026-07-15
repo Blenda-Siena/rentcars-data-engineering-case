@@ -1,0 +1,19 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "panels": [
+    {"type":"stat","title":"API throughput (req/s)","gridPos":{"h":8,"w":8,"x":0,"y":0},"targets":[{"expr":"sum(rate(rentcars_api_requests_total[5m]))"}]},
+    {"type":"stat","title":"API errors (%)","gridPos":{"h":8,"w":8,"x":8,"y":0},"targets":[{"expr":"100 * sum(rate(rentcars_api_requests_total{status=~\"5..\"}[5m])) / clamp_min(sum(rate(rentcars_api_requests_total[5m])), 0.001)"}]},
+    {"type":"stat","title":"API p95 (s)","gridPos":{"h":8,"w":8,"x":16,"y":0},"targets":[{"expr":"histogram_quantile(0.95, sum by (le) (rate(rentcars_api_request_duration_seconds_bucket[5m])))"}]},
+    {"type":"timeseries","title":"Pipeline duration","gridPos":{"h":9,"w":12,"x":0,"y":8},"targets":[{"expr":"pipeline_duration_seconds"}]},
+    {"type":"timeseries","title":"Files per partition","gridPos":{"h":9,"w":12,"x":12,"y":8},"targets":[{"expr":"lake_partition_file_count"}]},
+    {"type":"stat","title":"Streaming lag (s)","gridPos":{"h":8,"w":8,"x":0,"y":17},"targets":[{"expr":"streaming_lag_seconds"}]}
+  ],
+  "schemaVersion": 39,
+  "tags": ["rentcars", "data-platform"],
+  "templating": {"list": []},
+  "time": {"from": "now-6h", "to": "now"},
+  "title": "Rentcars Data Platform",
+  "uid": "rentcars-data-platform",
+  "version": 1
+}
